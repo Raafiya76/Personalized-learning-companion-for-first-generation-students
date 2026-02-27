@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - LearnMate</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body class="page-fade page-fade-ready dashboard-page">
+    <main class="auth-page">
+        <spline-viewer url="https://prod.spline.design/fXcrKO8RVlhTuX6A/scene.splinecode"></spline-viewer>
+        <div class="auth-brand">LearnMate</div>
+
+        <!-- ═══ NAVBAR ═══ -->
+        <nav class="dash-navbar">
+            <div class="dash-navbar-inner">
+                <span class="dash-nav-brand">LearnMate</span>
+                <div class="dash-nav-links">
+                    <a href="#skill-checklist" class="dash-nav-link active" data-nav-link>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        Skill Checklist
+                    </a>
+                    <a href="{{ url_for('main.resume_page') }}" class="dash-nav-link" data-nav-link>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        Analyze Resume
+                    </a>
+                    <a href="{{ url_for('main.progress_page') }}" class="dash-nav-link" data-nav-link>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14l2 2 4-4"/></svg>
+                        Progress Tracker
+                    </a>
+                    <a href="{{ url_for('main.mock_tests_page') }}" class="dash-nav-link" data-nav-link>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><polyline points="10,9 9,9 8,9"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        Mock Test Logbook
+                    </a>
+                    <a href="{{ url_for('main.leaderboard_page') }}" class="dash-nav-link" data-nav-link>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                        Leaderboard
+                    </a>
+                </div>
+                <a href="{{ url_for('main.logout') }}" class="dash-nav-logout" title="Logout">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Logout
+                </a>
+            </div>
+        </nav>
+
+        <div class="auth-shell">
+            <section class="auth-left dashboard-intro" id="skill-checklist">
+                <p class="auth-kicker">Dashboard</p>
+                <h1 class="auth-title">Placement readiness</h1>
+                <p class="auth-lead">Track the skills that matter for placements and see how close you are to readiness.</p>
+            </section>
+
+            <section class="dashboard-top-row">
+                <div class="dash-summary">
+                    <div class="summary-header">
+                        <div>
+                            <p class="summary-eyebrow">Skill checklist</p>
+                            <h2 class="summary-title">Your placement syllabus</h2>
+                        </div>
+                        <div class="readiness-badge">
+                            <span class="readiness-value" data-readiness-value>0%</span>
+                            <span class="readiness-label" data-readiness-label>Building momentum</span>
+                        </div>
+                    </div>
+
+                    <div class="readiness-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <span class="readiness-fill"></span>
+                    </div>
+
+                    <div class="summary-stats">
+                        <div class="summary-stat stat-done">
+                            <span class="stat-value" data-done-count>0</span>
+                            <span class="stat-label">Learned</span>
+                        </div>
+                        <div class="summary-stat stat-pending">
+                            <span class="stat-value" data-pending-count>0</span>
+                            <span class="stat-label">Pending</span>
+                        </div>
+                        <div class="summary-stat">
+                            <span class="stat-value">{{ group_count }}</span>
+                            <span class="stat-label">Skill lanes</span>
+                        </div>
+                    </div>
+
+                    <div class="focus-row" data-syllabus-tags></div>
+                </div>
+
+                <section class="auth-card checklist-card">
+                    <div class="card-header">
+                        <p class="card-eyebrow">Placement tracker</p>
+                        <h2 class="card-title">Skill checklist</h2>
+                        <p class="card-subtitle">Check off what you have learned and track what is still pending.</p>
+                    </div>
+
+                    <div class="checklist-status">
+                        <div class="status-pill status-done" data-status-pill>Learned</div>
+                        <div class="status-pill status-pending" data-status-pill>Pending</div>
+                    </div>
+
+                    <div class="skill-checklist">
+                        {% for group in checklist["groups"] %}
+                        <div class="checklist-group">
+                            <div class="group-title">{{ group["name"] }}</div>
+                            {% for item in group["items"] %}
+                            <label class="checklist-item" data-item-id="{{ item["id"] }}">
+                                <input type="checkbox" {% if item["status"] == "learned" %}checked{% endif %}>
+                                <span class="checklist-text">
+                                    <span class="skill-name">{{ item["name"] }}</span>
+                                    {% if item["meta"] %}
+                                    <span class="skill-meta">{{ item["meta"] }}</span>
+                                    {% endif %}
+                                </span>
+                                <span class="status-pill {% if item["status"] == "learned" %}is-done{% else %}is-pending{% endif %}" data-item-status>
+                                    {% if item["status"] == "learned" %}Learned{% else %}Pending{% endif %}
+                                </span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </section>
+            </section>
+
+            <!-- AI Chatbot -->
+            <section class="chatbot-wrapper reveal">
+                    <div class="section-header" style="margin-bottom: 10px;">
+                        <div class="pill">
+                            <div class="status-dots"><span></span><span></span><span></span></div>
+                            <span>AI Prep Assistant</span>
+                        </div>
+                        <div class="section-title">LearnMate Chatbot</div>
+                        <div class="section-sub">Ask for study tips, mock-test strategies, resume feedback, or quick explanations.</div>
+                    </div>
+
+                    <div class="chat-shell">
+                        <div class="chatbot-container">
+                            <div class="chatbot-robot">
+                                <spline-viewer url="https://prod.spline.design/oNMzWOQrsYUZkE-4/scene.splinecode"></spline-viewer>
+                            </div>
+                            <div class="chat-panel">
+                                <div class="chat-messages" id="chat-messages">
+                                    <div class="chat-message bot">
+                                        <div class="sender">AI Advisor</div>
+                                        <div class="text">Hi! I'm your LearnMate AI assistant. I can help with study plans, mock-test strategies, and resume improvement tips. Ask me anything!</div>
+                                    </div>
+                                </div>
+                                <div class="chat-input-area">
+                                    <input type="text" class="chat-input" id="chat-input" placeholder="Ask about your prep..." autocomplete="off">
+                                    <button class="chat-send-btn" id="chat-send-btn">Send</button>
+                                </div>
+                                <div class="chat-disclaimer" style="margin: 0 16px 14px;">
+                                    ⚠️ <strong>Disclaimer:</strong> Advisory insights only. Verify independently.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+            </section>
+        </div>
+
+        <div class="preppulse-badge">
+            <span class="live-indicator"></span>
+            <span class="badge-text">LearnMate</span>
+        </div>
+    </main>
+
+    <script type="module" src="https://unpkg.com/@splinetool/viewer@1.12.51/build/spline-viewer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js" crossorigin="anonymous"></script>
+    <script id="resume-analysis-data" type="application/json">{{ analysis_data | tojson if analysis_data else 'null' }}</script>
+    <script>
+        const RESUME_ANALYSIS = JSON.parse(document.getElementById('resume-analysis-data').textContent);
+    </script>
+    <script src="{{ url_for('static', filename='js/skill-checklist.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dashboard-chatbot.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/page-transition.js') }}"></script>
+</body>
+</html>

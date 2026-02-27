@@ -1,0 +1,6 @@
+flask
+python-dotenv
+PyPDF2
+python-docx
+APScheduler
+requests
