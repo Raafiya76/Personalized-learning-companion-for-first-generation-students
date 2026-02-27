@@ -22,14 +22,14 @@ Built for students who lack traditional mentorship, LearnMate acts as an always-
 
 ## Tech Stack
 
-| Layer        | Technology                          |
-| ------------ | ----------------------------------- |
-| Backend      | Python, Flask                       |
-| Database     | SQLite                              |
-| AI / LLM     | Groq API (LLaMA 3.1)               |
-| Frontend     | HTML, CSS, JavaScript (vanilla)     |
-| Email        | SMTP (Gmail or any provider)        |
-| Resume Parse | PyPDF2, python-docx                 |
+| Layer        | Technology                      |
+| ------------ | ------------------------------- |
+| Backend      | Python, Flask                   |
+| Database     | SQLite                          |
+| AI / LLM     | Groq API (LLaMA 3.1)            |
+| Frontend     | HTML, CSS, JavaScript (vanilla) |
+| Email        | SMTP (Gmail or any provider)    |
+| Resume Parse | PyPDF2, python-docx             |
 
 ---
 
@@ -104,34 +104,89 @@ The server starts at **http://127.0.0.1:5000**.
 
 ---
 
+## Deployment
+
+This application is deployed on **Render** for production use.
+
+### Live Application
+
+🔗 **[Access LearnMate Live](https://your-app-name.onrender.com)** _(Replace with your actual Render URL)_
+
+### Deployment Platform: Render
+
+**Why Render?**
+
+- ✅ Free tier available
+- ✅ Automatic deployments from GitHub
+- ✅ Built-in SSL/HTTPS
+- ✅ Easy environment variable management
+- ✅ PostgreSQL support for production databases
+
+### Deployment Steps
+
+1. **Connect Repository**
+   - Sign up at [render.com](https://render.com)
+   - Create a new Web Service
+   - Connect to GitHub repository: `Raafiya76/Personalized-learning-companion-for-first-generation-students`
+
+2. **Configure Build Settings**
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn run:app`
+   - **Environment**: Python 3
+
+3. **Set Environment Variables**
+   Add the following in Render's Environment tab:
+
+   ```
+   SECRET_KEY=<your-production-secret-key>
+   GROQ_API_KEY=<your-groq-api-key>
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USER=<your-email@gmail.com>
+   SMTP_PASSWORD=<your-app-password>
+   SMTP_USE_TLS=true
+   RESET_TOKEN_MAX_AGE=900
+   ```
+
+4. **Deploy**
+   - Click "Create Web Service"
+   - Render automatically builds and deploys
+   - Access your app at the provided `.onrender.com` URL
+
+### Auto-Deployment
+
+Every push to the `main` branch automatically triggers a new deployment on Render.
+
+---
+
 ## API Overview
 
-| Endpoint                        | Method       | Description                           |
-| ------------------------------- | ------------ | ------------------------------------- |
-| `/`                             | GET          | Landing page                          |
-| `/login`                        | GET / POST   | User login                            |
-| `/register`                     | GET / POST   | User registration                     |
-| `/forgot-password`              | GET / POST   | Request password reset email          |
-| `/reset-password/<token>`       | GET / POST   | Reset password via token              |
-| `/onboarding`                   | GET / POST   | First-login self-assessment           |
-| `/dashboard`                    | GET          | Main dashboard with AI companion      |
-| `/chat`                         | POST         | AI mentor chatbot conversation        |
-| `/mock-tests`                   | GET          | Mock tests page                       |
-| `/api/mock-tests`               | GET / POST   | CRUD for mock test records            |
-| `/api/mock-tests/<id>`          | PUT / DELETE | Update or delete a mock test          |
-| `/progress`                     | GET          | Progress & habits page                |
-| `/api/habits`                   | GET / POST   | Habit CRUD                            |
-| `/api/habits/toggle`            | POST         | Toggle daily habit completion         |
-| `/api/habits/logs`              | GET          | Retrieve habit log history            |
-| `/api/leaderboard`              | GET          | Leaderboard data                      |
-| `/resume`                       | GET          | Resume analyzer page                  |
-| `/api/resume/upload`            | POST         | Upload a resume file                  |
-| `/api/resume/analyze`           | POST         | AI resume analysis + skill gap        |
-| `/api/resume/smart-roadmap`     | POST         | Generate personalized learning roadmap|
-| `/api/resume/latest`            | GET          | Get latest resume & analysis          |
-| `/admin`                        | GET          | Admin panel                           |
-| `/api/admin/*`                  | Various      | Admin user/table management           |
-| `/api/health`                   | GET          | Health check                          |
+| Endpoint                    | Method       | Description                            |
+| --------------------------- | ------------ | -------------------------------------- |
+| `/`                         | GET          | Landing page                           |
+| `/login`                    | GET / POST   | User login                             |
+| `/register`                 | GET / POST   | User registration                      |
+| `/forgot-password`          | GET / POST   | Request password reset email           |
+| `/reset-password/<token>`   | GET / POST   | Reset password via token               |
+| `/onboarding`               | GET / POST   | First-login self-assessment            |
+| `/dashboard`                | GET          | Main dashboard with AI companion       |
+| `/chat`                     | POST         | AI mentor chatbot conversation         |
+| `/mock-tests`               | GET          | Mock tests page                        |
+| `/api/mock-tests`           | GET / POST   | CRUD for mock test records             |
+| `/api/mock-tests/<id>`      | PUT / DELETE | Update or delete a mock test           |
+| `/progress`                 | GET          | Progress & habits page                 |
+| `/api/habits`               | GET / POST   | Habit CRUD                             |
+| `/api/habits/toggle`        | POST         | Toggle daily habit completion          |
+| `/api/habits/logs`          | GET          | Retrieve habit log history             |
+| `/api/leaderboard`          | GET          | Leaderboard data                       |
+| `/resume`                   | GET          | Resume analyzer page                   |
+| `/api/resume/upload`        | POST         | Upload a resume file                   |
+| `/api/resume/analyze`       | POST         | AI resume analysis + skill gap         |
+| `/api/resume/smart-roadmap` | POST         | Generate personalized learning roadmap |
+| `/api/resume/latest`        | GET          | Get latest resume & analysis           |
+| `/admin`                    | GET          | Admin panel                            |
+| `/api/admin/*`              | Various      | Admin user/table management            |
+| `/api/health`               | GET          | Health check                           |
 
 ---
 
