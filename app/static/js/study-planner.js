@@ -1,118 +1,149 @@
 /**
- * Smart Study Planner JavaScript
- * Handles all interactions, API calls, and UI updates
+ * Smart Study Planner JavaScript – Full-calendar version
+ * Monthly calendar view with date-range scheduling (today → target date)
  */
 
-(function() {
+(function () {
     'use strict';
 
-    // State
+    // ─── State ───────────────────────────────────────────────────────────
     let currentConfig = null;
     let currentSubjects = [];
-    let currentSchedule = null;
+    let viewYear = new Date().getFullYear();
+    let viewMonth = new Date().getMonth() + 1;   // 1-indexed
+    let monthTasks = [];   // tasks fetched for the current view month
+    let scheduleProgress = null;
+    let scheduleDateRange = null;
 
-    // DOM Elements
-    const weeklyViewBtn = document.getElementById('weeklyViewBtn');
-    const setupViewBtn = document.getElementById('setupViewBtn');
-    const weeklyView = document.getElementById('weeklyView');
-    const setupView = document.getElementById('setupView');
-    const configForm = document.getElementById('configForm');
-    const addSubjectForm = document.getElementById('addSubjectForm');
-    const subjectsList = document.getElementById('subjectsList');
-    const calendarGrid = document.getElementById('calendarGrid');
-    const generateBtn = document.getElementById('generateBtn');
-    const setupPromptBtn = document.getElementById('setupPromptBtn');
-    const suggestionsBanner = document.getElementById('suggestionsBanner');
+    // ─── DOM Elements ────────────────────────────────────────────────────
+    const calendarViewBtn = document.getElementById('calendarViewBtn');
+    const setupViewBtn    = document.getElementById('setupViewBtn');
+    const calendarView    = document.getElementById('calendarView');
+    const setupView       = document.getElementById('setupView');
+    const configForm      = document.getElementById('configForm');
+    const addSubjectForm  = document.getElementById('addSubjectForm');
+    const subjectsList    = document.getElementById('subjectsList');
+    const calGrid         = document.getElementById('calGrid');
+    const calMonthLabel   = document.getElementById('calMonthLabel');
+    const prevMonthBtn    = document.getElementById('prevMonthBtn');
+    const nextMonthBtn    = document.getElementById('nextMonthBtn');
+    const generateBtn     = document.getElementById('generateBtn');
+    const setupPromptBtn  = document.getElementById('setupPromptBtn');
+    const dayDetail       = document.getElementById('dayDetail');
+    const dayDetailTitle  = document.getElementById('dayDetailTitle');
+    const dayDetailTasks  = document.getElementById('dayDetailTasks');
+    const closeDayDetail  = document.getElementById('closeDayDetail');
+    const suggestionsBanner  = document.getElementById('suggestionsBanner');
     const suggestionsContent = document.getElementById('suggestionsContent');
-    const currentStreak = document.getElementById('currentStreak');
-    const bestStreak = document.getElementById('bestStreak');
-    const readinessScore = document.getElementById('readinessScore');
-    const readinessLevel = document.getElementById('readinessLevel');
-    const readinessEmoji = document.getElementById('readinessEmoji');
+    const readinessScore  = document.getElementById('readinessScore');
+    const readinessLevel  = document.getElementById('readinessLevel');
+    const readinessEmoji  = document.getElementById('readinessEmoji');
     const performanceGrid = document.getElementById('performanceGrid');
 
-    // View Toggle
-    weeklyViewBtn.addEventListener('click', () => switchView('weekly'));
+    // Progress overview elements
+    const progressOverview  = document.getElementById('progressOverview');
+    const statDaysRemaining = document.getElementById('statDaysRemaining');
+    const statTasksDone     = document.getElementById('statTasksDone');
+    const statTotalTasks    = document.getElementById('statTotalTasks');
+    const statHoursStudied  = document.getElementById('statHoursStudied');
+    const progressBarFill   = document.getElementById('progressBarFill');
+    const progressPct       = document.getElementById('progressPct');
+
+    // ─── View toggle ─────────────────────────────────────────────────────
+    calendarViewBtn.addEventListener('click', () => switchView('calendar'));
     setupViewBtn.addEventListener('click', () => switchView('setup'));
-    setupPromptBtn?.addEventListener('click', () => switchView('setup'));
+    if (setupPromptBtn) setupPromptBtn.addEventListener('click', () => switchView('setup'));
 
     function switchView(view) {
-        if (view === 'weekly') {
-            weeklyViewBtn.classList.add('active');
+        if (view === 'calendar') {
+            calendarViewBtn.classList.add('active');
             setupViewBtn.classList.remove('active');
-            weeklyView.classList.add('active');
+            calendarView.classList.add('active');
             setupView.classList.remove('active');
-            loadWeeklySchedule();
+            loadCalendar();
         } else {
             setupViewBtn.classList.add('active');
-            weeklyViewBtn.classList.remove('active');
+            calendarViewBtn.classList.remove('active');
             setupView.classList.add('active');
-            weeklyView.classList.remove('active');
+            calendarView.classList.remove('active');
         }
     }
 
-    // Configuration Form
+    // ─── Month navigation ────────────────────────────────────────────────
+    prevMonthBtn.addEventListener('click', () => {
+        viewMonth--;
+        if (viewMonth < 1) { viewMonth = 12; viewYear--; }
+        loadCalendar();
+    });
+
+    nextMonthBtn.addEventListener('click', () => {
+        viewMonth++;
+        if (viewMonth > 12) { viewMonth = 1; viewYear++; }
+        loadCalendar();
+    });
+
+    // ─── Close day-detail panel ──────────────────────────────────────────
+    if (closeDayDetail) closeDayDetail.addEventListener('click', () => {
+        dayDetail.style.display = 'none';
+    });
+
+    // ─── Configuration Form ──────────────────────────────────────────────
     configForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(configForm);
         const config = Object.fromEntries(formData.entries());
 
         try {
-            const response = await fetch('/api/study-planner/config', {
+            const res = await fetch('/api/study-planner/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(config)
+                body: JSON.stringify(config),
             });
-
-            if (response.ok) {
-                showNotification('Configuration saved successfully!', 'success');
+            if (res.ok) {
+                showNotification('Configuration saved!', 'success');
                 currentConfig = config;
             } else {
                 showNotification('Failed to save configuration', 'error');
             }
-        } catch (error) {
-            console.error('Error saving config:', error);
+        } catch (err) {
+            console.error('Error saving config:', err);
             showNotification('Error saving configuration', 'error');
         }
     });
 
-    // Subject Management
+    // ─── Subjects ────────────────────────────────────────────────────────
     addSubjectForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(addSubjectForm);
         const subject = Object.fromEntries(formData.entries());
 
         try {
-            const response = await fetch('/api/study-planner/subjects', {
+            const res = await fetch('/api/study-planner/subjects', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(subject)
+                body: JSON.stringify(subject),
             });
-
-            if (response.ok) {
-                showNotification('Subject added successfully!', 'success');
+            if (res.ok) {
+                showNotification('Subject added!', 'success');
                 addSubjectForm.reset();
                 loadSubjects();
             } else {
                 showNotification('Failed to add subject', 'error');
             }
-        } catch (error) {
-            console.error('Error adding subject:', error);
-            showNotification('Error adding subject', 'error');
+        } catch (err) {
+            console.error('Error adding subject:', err);
         }
     });
 
     async function loadSubjects() {
         try {
-            const response = await fetch('/api/study-planner/config');
-            if (response.ok) {
-                const data = await response.json();
+            const res = await fetch('/api/study-planner/config');
+            if (res.ok) {
+                const data = await res.json();
                 currentSubjects = data.subjects || [];
                 renderSubjects();
             }
-        } catch (error) {
-            console.error('Error loading subjects:', error);
-        }
+        } catch (err) { console.error(err); }
     }
 
     function renderSubjects() {
@@ -120,350 +151,346 @@
             subjectsList.innerHTML = '<p class="text-dim">No subjects added yet</p>';
             return;
         }
-
-        subjectsList.innerHTML = currentSubjects.map(subject => `
+        subjectsList.innerHTML = currentSubjects.map(s => `
             <div class="subject-item">
                 <div class="subject-info">
-                    <span class="subject-name">${escapeHtml(subject.subject_name)}</span>
-                    <span class="priority-badge priority-${subject.priority}">
-                        ${subject.priority} - Weight ${subject.weight}
-                    </span>
+                    <span class="subject-name">${esc(s.subject_name)}</span>
+                    <span class="priority-badge priority-${s.priority}">${s.priority} – wt ${s.weight}</span>
                 </div>
-                <button class="btn-delete" onclick="deleteSubject('${escapeHtml(subject.subject_name)}')">
-                    Delete
-                </button>
+                <button class="btn-delete" onclick="deleteSubject('${esc(s.subject_name)}')">Delete</button>
             </div>
         `).join('');
     }
 
-    window.deleteSubject = async function(subjectName) {
-        if (!confirm(`Delete ${subjectName}?`)) return;
-
+    window.deleteSubject = async function (name) {
+        if (!confirm(`Delete ${name}?`)) return;
         try {
-            const response = await fetch(`/api/study-planner/subjects/${encodeURIComponent(subjectName)}`, {
-                method: 'DELETE'
-            });
-
-            if (response.ok) {
-                showNotification('Subject deleted', 'success');
-                loadSubjects();
-            } else {
-                showNotification('Failed to delete subject', 'error');
-            }
-        } catch (error) {
-            console.error('Error deleting subject:', error);
-            showNotification('Error deleting subject', 'error');
-        }
+            const res = await fetch(`/api/study-planner/subjects/${encodeURIComponent(name)}`, { method: 'DELETE' });
+            if (res.ok) { showNotification('Subject deleted', 'success'); loadSubjects(); }
+        } catch (err) { console.error(err); }
     };
 
-    // Generate Schedule
+    // ─── Generate Full Schedule ──────────────────────────────────────────
     generateBtn.addEventListener('click', async () => {
         generateBtn.disabled = true;
-        generateBtn.innerHTML = '<svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Generating...';
+        generateBtn.innerHTML = '<svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Generating…';
 
         try {
-            const response = await fetch('/api/study-planner/generate-schedule', {
+            const res = await fetch('/api/study-planner/generate-schedule', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
             });
-
-            if (response.ok) {
-                const data = await response.json();
-                showNotification(`Schedule generated! ${data.tasks_count} tasks created`, 'success');
-                await loadWeeklySchedule();
+            if (res.ok) {
+                const data = await res.json();
+                showNotification(`Schedule generated! ${data.tasks_count} tasks created.`, 'success');
+                // Reset view to current month and reload
+                const now = new Date();
+                viewYear = now.getFullYear();
+                viewMonth = now.getMonth() + 1;
+                await loadCalendar();
             } else {
-                const error = await response.json();
-                showNotification(error.error || 'Failed to generate schedule', 'error');
+                const err = await res.json();
+                showNotification(err.error || 'Failed to generate schedule', 'error');
             }
-        } catch (error) {
-            console.error('Error generating schedule:', error);
+        } catch (err) {
+            console.error(err);
             showNotification('Error generating schedule', 'error');
         } finally {
             generateBtn.disabled = false;
-            generateBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Generate Schedule';
+            generateBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Generate Full Schedule';
         }
     });
 
-    // Load Weekly Schedule
-    async function loadWeeklySchedule() {
+    // ─── Calendar API ────────────────────────────────────────────────────
+    async function loadCalendar() {
         try {
-            const response = await fetch('/api/study-planner/weekly-schedule');
-            if (response.ok) {
-                const data = await response.json();
-                if (data.schedule && data.tasks) {
-                    currentSchedule = data;
-                    renderCalendar(data.tasks);
-                } else {
-                    renderEmptyCalendar();
-                }
-            }
-        } catch (error) {
-            console.error('Error loading schedule:', error);
-        }
+            const res = await fetch(`/api/study-planner/calendar?year=${viewYear}&month=${viewMonth}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            monthTasks = data.tasks || [];
+            scheduleProgress = data.progress;
+            scheduleDateRange = data.date_range;
+            updateProgressOverview();
+            renderMonthlyCalendar();
+        } catch (err) { console.error('Error loading calendar:', err); }
     }
 
-    function renderCalendar(tasks) {
-        // Group tasks by date
+    // ─── Progress overview ───────────────────────────────────────────────
+    function updateProgressOverview() {
+        if (!scheduleProgress) {
+            progressOverview.style.display = 'none';
+            return;
+        }
+        progressOverview.style.display = '';
+        statDaysRemaining.textContent = scheduleProgress.remaining_days;
+        statTasksDone.textContent = scheduleProgress.completed_tasks;
+        statTotalTasks.textContent = scheduleProgress.total_tasks;
+        statHoursStudied.textContent = Math.round(scheduleProgress.completed_minutes / 60);
+        const pct = scheduleProgress.completion_pct || 0;
+        progressBarFill.style.width = pct + '%';
+        progressPct.textContent = pct + '%';
+    }
+
+    // ─── Render monthly calendar ─────────────────────────────────────────
+    function renderMonthlyCalendar() {
+        const MONTH_NAMES = [
+            '', 'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December',
+        ];
+        calMonthLabel.textContent = `${MONTH_NAMES[viewMonth]} ${viewYear}`;
+
+        if (!monthTasks.length && !scheduleDateRange) {
+            calGrid.innerHTML = `
+                <div class="empty-state">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+                        <rect x="3" y="4" width="18" height="18" rx="2"/>
+                        <line x1="16" y1="2" x2="16" y2="6"/>
+                        <line x1="8" y1="2" x2="8" y2="6"/>
+                        <line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                    <p>No schedule generated yet</p>
+                    <button class="btn-setup" onclick="document.getElementById('setupViewBtn').click()">
+                        Configure Planner →
+                    </button>
+                </div>`;
+            return;
+        }
+
+        // Build a tasksByDate map
         const tasksByDate = {};
-        tasks.forEach(task => {
-            if (!tasksByDate[task.task_date]) {
-                tasksByDate[task.task_date] = [];
-            }
-            tasksByDate[task.task_date].push(task);
+        monthTasks.forEach(t => {
+            const d = t.task_date;
+            if (!tasksByDate[d]) tasksByDate[d] = [];
+            tasksByDate[d].push(t);
         });
 
-        // Get week start and end from schedule
-        const weekStart = new Date(currentSchedule.week_start_date);
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        // First day of the month and padding
+        const firstDay = new Date(viewYear, viewMonth - 1, 1);
+        const startPad = firstDay.getDay(); // 0=Sun
+        const daysInMonth = new Date(viewYear, viewMonth, 0).getDate();
+
+        // Previous month tail
+        const prevMonthDays = new Date(viewYear, viewMonth - 1, 0).getDate();
 
         let html = '';
-        for (let i = 0; i < 7; i++) {
-            const currentDate = new Date(weekStart);
-            currentDate.setDate(weekStart.getDate() + i);
-            const dateStr = currentDate.toISOString().split('T')[0];
-            const dayTasks = tasksByDate[dateStr] || [];
 
-            html += `
-                <div class="calendar-day">
-                    <div class="day-header">
-                        <div class="day-name">${days[currentDate.getDay()]}</div>
-                        <div class="day-date">${currentDate.getDate()}</div>
-                    </div>
-                    <div class="day-tasks">
-                        ${dayTasks.map(task => renderTask(task)).join('')}
-                    </div>
-                </div>
-            `;
+        // Leading blanks (previous month)
+        for (let i = startPad - 1; i >= 0; i--) {
+            const d = prevMonthDays - i;
+            html += `<div class="cal-cell outside"><span class="cal-date-num">${d}</span></div>`;
         }
 
-        calendarGrid.innerHTML = html;
+        // Actual days
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${viewYear}-${String(viewMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const dayTasks = tasksByDate[dateStr] || [];
+            const isToday = dateStr === todayStr;
+            const total = dayTasks.length;
+            const doneCnt = dayTasks.filter(t => t.completed).length;
+            const allDone = total > 0 && doneCnt === total;
+
+            let cls = 'cal-cell';
+            if (isToday) cls += ' today';
+            if (total > 0) cls += ' has-tasks';
+            if (allDone) cls += ' all-done';
+
+            // Dots (max 6 shown)
+            let dots = '';
+            dayTasks.slice(0, 6).forEach(t => {
+                let dotCls = 'cal-dot';
+                if (t.completed) dotCls += ' done';
+                else if (t.task_type === 'revision') dotCls += ' revision';
+                else if (t.task_type === 'mock_test') dotCls += ' mock';
+                dots += `<span class="${dotCls}"></span>`;
+            });
+
+            html += `
+                <div class="${cls}" data-date="${dateStr}" onclick="openDayDetail('${dateStr}')">
+                    <span class="cal-date-num">${d}</span>
+                    <div class="cal-dots">${dots}</div>
+                    ${total > 0 ? `<span class="cal-task-count">${doneCnt}/${total}</span>` : ''}
+                </div>`;
+        }
+
+        // Trailing blanks
+        const totalCells = startPad + daysInMonth;
+        const trailing = (7 - (totalCells % 7)) % 7;
+        for (let i = 1; i <= trailing; i++) {
+            html += `<div class="cal-cell outside"><span class="cal-date-num">${i}</span></div>`;
+        }
+
+        calGrid.innerHTML = html;
     }
+
+    // ─── Day detail panel ────────────────────────────────────────────────
+    window.openDayDetail = function (dateStr) {
+        const tasks = monthTasks.filter(t => t.task_date === dateStr);
+        if (!tasks.length) {
+            dayDetail.style.display = 'none';
+            return;
+        }
+
+        const d = new Date(dateStr + 'T00:00:00');
+        const opts = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
+        dayDetailTitle.textContent = d.toLocaleDateString('en-US', opts);
+
+        dayDetailTasks.innerHTML = tasks.map(t => renderTask(t)).join('');
+        dayDetail.style.display = '';
+        dayDetail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
 
     function renderTask(task) {
         const typeClass = `task-type-${task.task_type}`;
         return `
-            <div class="task-item ${task.completed ? 'completed' : ''}" 
+            <div class="task-item ${task.completed ? 'completed' : ''}"
                  data-task-id="${task.id}"
-                 onclick="toggleTask(${task.id}, ${task.completed ? 1 : 0})">
+                 onclick="toggleTask(${task.id}, ${task.completed ? 1 : 0}); event.stopPropagation();">
                 <span class="task-time">${formatTime(task.task_time)}</span>
-                <span class="task-subject">${escapeHtml(task.subject)}</span>
-                <span class="task-topic">${escapeHtml(task.topic)}</span>
+                <span class="task-subject">${esc(task.subject)}</span>
+                <span class="task-topic">${esc(task.topic)}</span>
                 <span class="task-type-badge ${typeClass}">${task.task_type.replace('_', ' ')}</span>
-            </div>
-        `;
+            </div>`;
     }
 
-    function renderEmptyCalendar() {
-        calendarGrid.innerHTML = `
-            <div class="empty-state">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
-                    <rect x="3" y="4" width="18" height="18" rx="2"/>
-                    <line x1="16" y1="2" x2="16" y2="6"/>
-                    <line x1="8" y1="2" x2="8" y2="6"/>
-                    <line x1="3" y1="10" x2="21" y2="10"/>
-                </svg>
-                <p>No schedule generated yet</p>
-                <button class="btn-setup" onclick="document.getElementById('setupViewBtn').click()">
-                    Configure Planner →
-                </button>
-            </div>
-        `;
-    }
-
-    // Toggle Task Completion
-    window.toggleTask = async function(taskId, isCompleted) {
-        const endpoint = isCompleted 
+    // ─── Toggle task ─────────────────────────────────────────────────────
+    window.toggleTask = async function (taskId, isCompleted) {
+        const url = isCompleted
             ? `/api/study-planner/task/${taskId}/incomplete`
             : `/api/study-planner/task/${taskId}/complete`;
 
         try {
-            const response = await fetch(endpoint, { method: 'POST' });
-            if (response.ok) {
-                loadWeeklySchedule();
-                loadStreak();
+            const res = await fetch(url, { method: 'POST' });
+            if (res.ok) {
+                await loadCalendar();
+                // Re-open the same day detail if it was open
+                const openDate = dayDetailTitle.textContent;
+                if (dayDetail.style.display !== 'none' && openDate) {
+                    // Find the date str from existing tasks
+                    const task = monthTasks.find(t => t.id === taskId);
+                    if (task) window.openDayDetail(task.task_date);
+                }
             }
-        } catch (error) {
-            console.error('Error toggling task:', error);
-        }
+        } catch (err) { console.error(err); }
     };
 
-    // Load Streak
-    async function loadStreak() {
-        try {
-            const response = await fetch('/api/study-planner/streak');
-            if (response.ok) {
-                const streak = await response.json();
-                currentStreak.textContent = streak.current_streak || 0;
-                bestStreak.textContent = streak.best_streak || 0;
-            }
-        } catch (error) {
-            console.error('Error loading streak:', error);
-        }
-    }
-
-    // Load Performance
+    // ─── Performance & readiness ─────────────────────────────────────────
     async function loadPerformance() {
         try {
-            const response = await fetch('/api/study-planner/performance');
-            if (response.ok) {
-                const data = await response.json();
-                updateReadiness(data.readiness);
-                renderPerformance(data.performance);
-            }
-        } catch (error) {
-            console.error('Error loading performance:', error);
-        }
+            const res = await fetch('/api/study-planner/performance');
+            if (!res.ok) return;
+            const data = await res.json();
+            updateReadiness(data.readiness);
+            renderPerformance(data.performance);
+        } catch (err) { console.error(err); }
     }
 
-    function updateReadiness(readiness) {
-        if (!readiness) return;
-        
-        readinessScore.textContent = `${readiness.score}%`;
-        readinessLevel.textContent = readiness.level;
-        readinessEmoji.textContent = readiness.emoji;
+    function updateReadiness(r) {
+        if (!r) return;
+        readinessScore.textContent = `${r.score}%`;
+        readinessLevel.textContent = r.level;
+        readinessEmoji.textContent = r.emoji;
     }
 
-    function renderPerformance(performance) {
-        if (!performance.subject_performance || !performance.subject_performance.length) {
+    function renderPerformance(p) {
+        if (!p || !p.subject_performance || !p.subject_performance.length) {
             performanceGrid.innerHTML = '<p class="text-dim">Complete tasks to see insights</p>';
             return;
         }
-
-        performanceGrid.innerHTML = performance.subject_performance.map(subj => `
+        performanceGrid.innerHTML = p.subject_performance.map(s => `
             <div class="performance-card">
                 <div class="perf-label">Completion Rate</div>
-                <div class="perf-value">${calculateCompletion(subj)}%</div>
-                <div class="perf-subject">${escapeHtml(subj.subject)}</div>
+                <div class="perf-value">${calcCompletion(s)}%</div>
+                <div class="perf-subject">${esc(s.subject)}</div>
             </div>
         `).join('');
     }
 
-    function calculateCompletion(subject) {
-        if (!subject.total_tasks) return 0;
-        return Math.round((subject.total_completed / subject.total_tasks) * 100);
+    function calcCompletion(s) {
+        return s.total_tasks ? Math.round((s.total_completed / s.total_tasks) * 100) : 0;
     }
 
-    // Load Suggestions
+    // ─── Suggestions ─────────────────────────────────────────────────────
     async function loadSuggestions() {
         try {
-            const response = await fetch('/api/study-planner/suggestions');
-            if (response.ok) {
-                const data = await response.json();
-                if (data.suggestions && data.suggestions.length) {
-                    suggestionsBanner.style.display = 'flex';
-                    suggestionsContent.innerHTML = data.suggestions.map(s => 
-                        `<p>${escapeHtml(s)}</p>`
-                    ).join('');
-                } else {
-                    suggestionsBanner.style.display = 'none';
-                }
+            const res = await fetch('/api/study-planner/suggestions');
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.suggestions && data.suggestions.length) {
+                suggestionsBanner.style.display = 'flex';
+                suggestionsContent.innerHTML = data.suggestions.map(s => `<p>${esc(s)}</p>`).join('');
+            } else {
+                suggestionsBanner.style.display = 'none';
             }
-        } catch (error) {
-            console.error('Error loading suggestions:', error);
-        }
+        } catch (err) { console.error(err); }
     }
 
-    // Load Configuration
+    // ─── Config loader ───────────────────────────────────────────────────
     async function loadConfig() {
         try {
-            const response = await fetch('/api/study-planner/config');
-            if (response.ok) {
-                const data = await response.json();
-                currentConfig = data.config;
-                currentSubjects = data.subjects || [];
-                
-                if (currentConfig) {
-                    populateConfigForm(currentConfig);
-                }
-                renderSubjects();
-            }
-        } catch (error) {
-            console.error('Error loading config:', error);
-        }
+            const res = await fetch('/api/study-planner/config');
+            if (!res.ok) return;
+            const data = await res.json();
+            currentConfig = data.config;
+            currentSubjects = data.subjects || [];
+            if (currentConfig) populateConfigForm(currentConfig);
+            renderSubjects();
+        } catch (err) { console.error(err); }
     }
 
-    function populateConfigForm(config) {
-        if (!config) return;
-        
-        Object.keys(config).forEach(key => {
-            const input = configForm.elements[key];
-            if (input && config[key]) {
-                input.value = config[key];
-            }
+    function populateConfigForm(cfg) {
+        if (!cfg) return;
+        Object.keys(cfg).forEach(k => {
+            const el = configForm.elements[k];
+            if (el && cfg[k]) el.value = cfg[k];
         });
     }
 
-    // Utility Functions
-    function formatTime(timeStr) {
-        // Convert 24h to 12h format
-        const [hours, minutes] = timeStr.split(':');
-        const h = parseInt(hours);
-        const ampm = h >= 12 ? 'PM' : 'AM';
-        const displayHour = h % 12 || 12;
-        return `${displayHour}:${minutes} ${ampm}`;
+    // ─── Utilities ───────────────────────────────────────────────────────
+    function formatTime(t) {
+        const [h, m] = t.split(':');
+        const hr = parseInt(h, 10);
+        return `${hr % 12 || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`;
     }
 
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+    function esc(text) {
+        const d = document.createElement('div');
+        d.textContent = text;
+        return d.innerHTML;
     }
 
     function showNotification(message, type = 'info') {
-        // Simple notification (you can enhance this)
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.textContent = message;
-        notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 16px 24px;
-            background: ${type === 'success' ? 'rgba(74, 222, 128, 0.2)' : 'rgba(255, 77, 77, 0.2)'};
-            border: 1px solid ${type === 'success' ? 'rgba(74, 222, 128, 0.4)' : 'rgba(255, 77, 77, 0.4)'};
-            color: #fff;
-            border-radius: 12px;
-            z-index: 1000;
-            animation: slideInRight 0.3s ease;
+        const n = document.createElement('div');
+        n.textContent = message;
+        n.style.cssText = `
+            position:fixed;top:20px;right:20px;padding:16px 24px;
+            background:${type === 'success' ? 'rgba(74,222,128,.2)' : 'rgba(255,77,77,.2)'};
+            border:1px solid ${type === 'success' ? 'rgba(74,222,128,.4)' : 'rgba(255,77,77,.4)'};
+            color:#fff;border-radius:12px;z-index:1000;
+            animation:slideInRight .3s ease;font-size:.9rem;
         `;
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.style.animation = 'slideOutRight 0.3s ease';
-            setTimeout(() => notification.remove(), 300);
-        }, 3000);
+        document.body.appendChild(n);
+        setTimeout(() => { n.style.animation = 'slideOutRight .3s ease'; setTimeout(() => n.remove(), 300); }, 3000);
     }
 
-    // Add CSS animations
+    // Inject animations
     const style = document.createElement('style');
     style.textContent = `
-        @keyframes slideInRight {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slideOutRight {
-            from { transform: translateX(0); opacity: 1; }
-            to { transform: translateX(100%); opacity: 0; }
-        }
-        .spin {
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        @keyframes slideInRight  { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
+        @keyframes slideOutRight { from{transform:translateX(0);opacity:1}   to{transform:translateX(100%);opacity:0} }
+        .spin { animation:spin 1s linear infinite; }
+        @keyframes spin { to{transform:rotate(360deg)} }
     `;
     document.head.appendChild(style);
 
-    // Initialize
+    // ─── Init ────────────────────────────────────────────────────────────
     async function init() {
         await loadConfig();
-        await loadStreak();
         await loadPerformance();
         await loadSuggestions();
-        await loadWeeklySchedule();
+        await loadCalendar();
     }
-
-    // Run initialization when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {

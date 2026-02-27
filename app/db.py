@@ -323,6 +323,55 @@ def init_db(app):
             """
         )
 
+        # ── Roadmap Module ───────────────────────────────────────────────
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS roadmaps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                branch TEXT NOT NULL,
+                company_type TEXT NOT NULL,
+                company_name TEXT,
+                preparation_level TEXT NOT NULL,
+                total_days INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS roadmap_topics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                roadmap_id INTEGER NOT NULL,
+                topic_name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                difficulty_level TEXT NOT NULL,
+                order_sequence INTEGER NOT NULL,
+                estimated_days INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'not_started',
+                completed_at TEXT,
+                FOREIGN KEY (roadmap_id) REFERENCES roadmaps(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS roadmap_milestones (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                roadmap_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                level TEXT NOT NULL,
+                after_topic_order INTEGER NOT NULL,
+                cumulative_days INTEGER NOT NULL DEFAULT 0,
+                reached INTEGER NOT NULL DEFAULT 0,
+                reached_at TEXT,
+                FOREIGN KEY (roadmap_id) REFERENCES roadmaps(id) ON DELETE CASCADE
+            )
+            """
+        )
+
         conn.commit()
 
 
@@ -1563,8 +1612,8 @@ def create_weekly_schedule(db_path, email, week_start_date, week_end_date, tasks
         # Calculate total planned hours
         total_planned_hours = sum(task["duration_minutes"] for task in tasks) / 60.0
         
-        # Create schedule
-        cur = conn.execute(
+        # Create or update schedule
+        conn.execute(
             """
             INSERT INTO weekly_schedules 
             (email, week_start_date, week_end_date, total_planned_hours, updated_at)
@@ -1573,9 +1622,13 @@ def create_weekly_schedule(db_path, email, week_start_date, week_end_date, tasks
                 week_end_date = excluded.week_end_date,
                 total_planned_hours = excluded.total_planned_hours,
                 updated_at = datetime('now')
-            RETURNING id
             """,
             (email, week_start_date, week_end_date, total_planned_hours),
+        )
+        # Fetch the schedule_id (compatible with all SQLite versions)
+        cur = conn.execute(
+            "SELECT id FROM weekly_schedules WHERE email = ? AND week_start_date = ?",
+            (email, week_start_date),
         )
         schedule_id = cur.fetchone()[0]
         
@@ -1837,4 +1890,414 @@ def get_upcoming_mock_tests(db_path, email):
             (email,),
         )
         return [dict(r) for r in cur.fetchall()]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ★ Full-calendar schedule functions
+# ─────────────────────────────────────────────────────────────────────────────
+
+def create_full_schedule(db_path, email, start_date, end_date, tasks):
+    """
+    Create a full-calendar schedule (today → target date).
+    Re-uses the weekly_schedules table for the metadata row so that
+    the existing study_tasks FK stays valid.
+    All previous tasks for this user are deleted first.
+    """
+    with get_connection(db_path) as conn:
+        # Remove any previous full schedules + their tasks for this user
+        cur = conn.execute(
+            "SELECT id FROM weekly_schedules WHERE email = ?", (email,)
+        )
+        old_ids = [r["id"] for r in cur.fetchall()]
+        for oid in old_ids:
+            conn.execute("DELETE FROM study_tasks WHERE schedule_id = ?", (oid,))
+        conn.execute("DELETE FROM weekly_schedules WHERE email = ?", (email,))
+
+        total_planned_hours = sum(t["duration_minutes"] for t in tasks) / 60.0
+
+        conn.execute(
+            """
+            INSERT INTO weekly_schedules
+            (email, week_start_date, week_end_date, total_planned_hours, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+            """,
+            (email, start_date, end_date, total_planned_hours),
+        )
+        cur = conn.execute(
+            "SELECT id FROM weekly_schedules WHERE email = ? AND week_start_date = ?",
+            (email, start_date),
+        )
+        schedule_id = cur.fetchone()[0]
+
+        # Batch insert tasks (100 at a time for perf)
+        BATCH = 100
+        for i in range(0, len(tasks), BATCH):
+            batch = tasks[i : i + BATCH]
+            conn.executemany(
+                """
+                INSERT INTO study_tasks
+                (email, schedule_id, task_date, task_time, subject, topic,
+                 task_type, duration_minutes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        email,
+                        schedule_id,
+                        t["date"],
+                        t["time"],
+                        t["subject"],
+                        t["topic"],
+                        t.get("type", "study"),
+                        t["duration_minutes"],
+                    )
+                    for t in batch
+                ],
+            )
+
+        conn.commit()
+        return schedule_id
+
+
+def get_calendar_tasks(db_path, email, year, month):
+    """Return all tasks for a given calendar month."""
+    start = f"{year:04d}-{month:02d}-01"
+    if month == 12:
+        end = f"{year + 1:04d}-01-01"
+    else:
+        end = f"{year:04d}-{month + 1:02d}-01"
+
+    with get_connection(db_path) as conn:
+        cur = conn.execute(
+            """
+            SELECT * FROM study_tasks
+            WHERE email = ? AND task_date >= ? AND task_date < ?
+            ORDER BY task_date ASC, task_time ASC
+            """,
+            (email, start, end),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_schedule_progress(db_path, email):
+    """
+    Return overall schedule statistics:
+    total tasks, completed tasks, % complete, remaining days, etc.
+    """
+    with get_connection(db_path) as conn:
+        # Schedule metadata
+        cur = conn.execute(
+            """
+            SELECT week_start_date AS start_date, week_end_date AS end_date,
+                   total_planned_hours
+            FROM weekly_schedules
+            WHERE email = ?
+            ORDER BY id DESC LIMIT 1
+            """,
+            (email,),
+        )
+        meta = cur.fetchone()
+        if not meta:
+            return None
+
+        meta = dict(meta)
+
+        # Aggregated task counts
+        cur = conn.execute(
+            """
+            SELECT
+                COUNT(*)                     AS total_tasks,
+                SUM(CASE WHEN completed=1 THEN 1 ELSE 0 END)  AS completed_tasks,
+                SUM(duration_minutes)        AS total_minutes,
+                SUM(CASE WHEN completed=1 THEN duration_minutes ELSE 0 END) AS completed_minutes,
+                COUNT(DISTINCT task_date)    AS scheduled_days
+            FROM study_tasks
+            WHERE email = ?
+            """,
+            (email,),
+        )
+        stats = dict(cur.fetchone())
+
+        total = stats["total_tasks"] or 0
+        done = stats["completed_tasks"] or 0
+        pct = round((done / total) * 100, 1) if total else 0
+
+        from datetime import datetime
+        today = datetime.now().date()
+        end_date = datetime.fromisoformat(meta["end_date"]).date()
+        remaining_days = max((end_date - today).days, 0)
+
+        return {
+            "start_date": meta["start_date"],
+            "end_date": meta["end_date"],
+            "total_planned_hours": meta["total_planned_hours"],
+            "total_tasks": total,
+            "completed_tasks": done,
+            "completion_pct": pct,
+            "remaining_days": remaining_days,
+            "total_minutes": stats["total_minutes"] or 0,
+            "completed_minutes": stats["completed_minutes"] or 0,
+            "scheduled_days": stats["scheduled_days"] or 0,
+        }
+
+
+def get_full_schedule_date_range(db_path, email):
+    """Return the (start_date, end_date) of the user's latest full schedule."""
+    with get_connection(db_path) as conn:
+        cur = conn.execute(
+            """
+            SELECT week_start_date AS start_date, week_end_date AS end_date
+            FROM weekly_schedules
+            WHERE email = ?
+            ORDER BY id DESC LIMIT 1
+            """,
+            (email,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ROADMAP MODULE – CRUD
+# ═════════════════════════════════════════════════════════════════════════════
+
+def create_roadmap(db_path, email, roadmap_data):
+    """
+    Persist a freshly generated roadmap. Deletes any existing one first.
+    roadmap_data: output of RoadmapGenerator.generate()
+    Returns the new roadmap id.
+    """
+    with get_connection(db_path) as conn:
+        # Delete previous roadmap(s) for this user
+        old = conn.execute("SELECT id FROM roadmaps WHERE email = ?", (email,)).fetchall()
+        for row in old:
+            conn.execute("DELETE FROM roadmap_topics WHERE roadmap_id = ?", (row["id"],))
+            conn.execute("DELETE FROM roadmap_milestones WHERE roadmap_id = ?", (row["id"],))
+        conn.execute("DELETE FROM roadmaps WHERE email = ?", (email,))
+
+        summary = roadmap_data["summary"]
+        cur = conn.execute(
+            """
+            INSERT INTO roadmaps (email, branch, company_type, company_name,
+                                  preparation_level, total_days)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                email,
+                summary["branch"],
+                summary["company_type"],
+                summary.get("target_company"),
+                summary["preparation_level"],
+                summary["total_days"],
+            ),
+        )
+        roadmap_id = cur.lastrowid
+
+        # Bulk-insert topics
+        for t in roadmap_data["topics"]:
+            conn.execute(
+                """
+                INSERT INTO roadmap_topics
+                    (roadmap_id, topic_name, category, difficulty_level,
+                     order_sequence, estimated_days, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'not_started')
+                """,
+                (
+                    roadmap_id,
+                    t["topic"],
+                    t.get("category", ""),
+                    t["level"],
+                    t["order_sequence"],
+                    t["estimated_days"],
+                ),
+            )
+
+        # Milestones
+        for m in roadmap_data["milestones"]:
+            conn.execute(
+                """
+                INSERT INTO roadmap_milestones
+                    (roadmap_id, title, description, level,
+                     after_topic_order, cumulative_days)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    roadmap_id,
+                    m["title"],
+                    m["description"],
+                    m["level"],
+                    m["after_topic_order"],
+                    m["cumulative_days"],
+                ),
+            )
+
+        conn.commit()
+        return roadmap_id
+
+
+def get_roadmap(db_path, email):
+    """Return the latest roadmap row for the user, or None."""
+    with get_connection(db_path) as conn:
+        cur = conn.execute(
+            "SELECT * FROM roadmaps WHERE email = ? ORDER BY id DESC LIMIT 1",
+            (email,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_roadmap_topics(db_path, roadmap_id):
+    """Return all topics for a roadmap, ordered."""
+    with get_connection(db_path) as conn:
+        cur = conn.execute(
+            """
+            SELECT * FROM roadmap_topics
+            WHERE roadmap_id = ?
+            ORDER BY order_sequence
+            """,
+            (roadmap_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def update_roadmap_topic_status(db_path, topic_id, status, email):
+    """
+    Update a single topic's status. Returns True if updated.
+    Status: 'not_started', 'in_progress', 'completed'
+    """
+    with get_connection(db_path) as conn:
+        completed_at = "datetime('now')" if status == "completed" else "NULL"
+        conn.execute(
+            f"""
+            UPDATE roadmap_topics
+            SET status = ?,
+                completed_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE NULL END
+            WHERE id = ?
+              AND roadmap_id IN (SELECT id FROM roadmaps WHERE email = ?)
+            """,
+            (status, status, topic_id, email),
+        )
+        conn.commit()
+
+        # Check & update milestones
+        _refresh_milestones(conn, email)
+        conn.commit()
+        return True
+
+
+def _refresh_milestones(conn, email):
+    """Auto-set milestones as reached when all preceding topics are done."""
+    roadmap = conn.execute(
+        "SELECT id FROM roadmaps WHERE email = ? ORDER BY id DESC LIMIT 1",
+        (email,),
+    ).fetchone()
+    if not roadmap:
+        return
+    rid = roadmap["id"]
+    milestones = conn.execute(
+        "SELECT * FROM roadmap_milestones WHERE roadmap_id = ? ORDER BY after_topic_order",
+        (rid,),
+    ).fetchall()
+    for ms in milestones:
+        done = conn.execute(
+            """
+            SELECT COUNT(*) as cnt FROM roadmap_topics
+            WHERE roadmap_id = ? AND order_sequence <= ? AND status = 'completed'
+            """,
+            (rid, ms["after_topic_order"]),
+        ).fetchone()["cnt"]
+        total = conn.execute(
+            """
+            SELECT COUNT(*) as cnt FROM roadmap_topics
+            WHERE roadmap_id = ? AND order_sequence <= ?
+            """,
+            (rid, ms["after_topic_order"]),
+        ).fetchone()["cnt"]
+        if total > 0 and done >= total and not ms["reached"]:
+            conn.execute(
+                "UPDATE roadmap_milestones SET reached = 1, reached_at = datetime('now') WHERE id = ?",
+                (ms["id"],),
+            )
+
+
+def get_roadmap_milestones(db_path, roadmap_id):
+    """Return all milestones for a roadmap."""
+    with get_connection(db_path) as conn:
+        cur = conn.execute(
+            "SELECT * FROM roadmap_milestones WHERE roadmap_id = ? ORDER BY after_topic_order",
+            (roadmap_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_roadmap_progress(db_path, email):
+    """
+    Aggregate progress: total, per-level, per-status counts.
+    """
+    with get_connection(db_path) as conn:
+        roadmap = conn.execute(
+            "SELECT * FROM roadmaps WHERE email = ? ORDER BY id DESC LIMIT 1",
+            (email,),
+        ).fetchone()
+        if not roadmap:
+            return None
+        rid = roadmap["id"]
+
+        # Overall
+        total = conn.execute(
+            "SELECT COUNT(*) as cnt FROM roadmap_topics WHERE roadmap_id = ?", (rid,)
+        ).fetchone()["cnt"]
+        completed = conn.execute(
+            "SELECT COUNT(*) as cnt FROM roadmap_topics WHERE roadmap_id = ? AND status = 'completed'",
+            (rid,),
+        ).fetchone()["cnt"]
+        in_progress = conn.execute(
+            "SELECT COUNT(*) as cnt FROM roadmap_topics WHERE roadmap_id = ? AND status = 'in_progress'",
+            (rid,),
+        ).fetchone()["cnt"]
+
+        # Per-level breakdown
+        levels = {}
+        for lv in ("beginner", "intermediate", "advanced"):
+            lv_total = conn.execute(
+                "SELECT COUNT(*) as cnt FROM roadmap_topics WHERE roadmap_id = ? AND difficulty_level = ?",
+                (rid, lv),
+            ).fetchone()["cnt"]
+            lv_done = conn.execute(
+                "SELECT COUNT(*) as cnt FROM roadmap_topics WHERE roadmap_id = ? AND difficulty_level = ? AND status = 'completed'",
+                (rid, lv),
+            ).fetchone()["cnt"]
+            levels[lv] = {"total": lv_total, "completed": lv_done}
+
+        milestones = [dict(m) for m in conn.execute(
+            "SELECT * FROM roadmap_milestones WHERE roadmap_id = ? ORDER BY after_topic_order",
+            (rid,),
+        ).fetchall()]
+
+        return {
+            "roadmap_id": rid,
+            "branch": roadmap["branch"],
+            "company_type": roadmap["company_type"],
+            "company_name": roadmap["company_name"],
+            "preparation_level": roadmap["preparation_level"],
+            "total_topics": total,
+            "completed_topics": completed,
+            "in_progress_topics": in_progress,
+            "not_started_topics": total - completed - in_progress,
+            "total_days": roadmap["total_days"],
+            "levels": levels,
+            "milestones": milestones,
+        }
+
+
+def delete_roadmap(db_path, email):
+    """Remove the user's roadmap and all associated data."""
+    with get_connection(db_path) as conn:
+        old = conn.execute("SELECT id FROM roadmaps WHERE email = ?", (email,)).fetchall()
+        for row in old:
+            conn.execute("DELETE FROM roadmap_topics WHERE roadmap_id = ?", (row["id"],))
+            conn.execute("DELETE FROM roadmap_milestones WHERE roadmap_id = ?", (row["id"],))
+        conn.execute("DELETE FROM roadmaps WHERE email = ?", (email,))
+        conn.commit()
+        return True
 

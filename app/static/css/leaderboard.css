@@ -83,7 +83,7 @@
     font-size: 0.78rem;
     text-transform: uppercase;
     letter-spacing: 1.2px;
-    color: rgba(255,255,255,0.5);
+    color: rgba(255,255,255,0.75);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -259,10 +259,10 @@
     gap: 8px;
     padding: 40px 20px;
     text-align: center;
-    color: rgba(255,255,255,0.4);
+    color: rgba(255,255,255,0.65);
 }
 .lb-empty .empty-icon { font-size: 2.4rem; }
-.lb-empty .empty-text { font-size: 0.95rem; font-weight: 600; color: rgba(255,255,255,0.55); }
+.lb-empty .empty-text { font-size: 0.95rem; font-weight: 600; color: rgba(255,255,255,0.80); }
 .lb-empty .empty-hint { font-size: 0.78rem; }
 
 /* ── Card header reuse ──────────────────────────────────────────────────────── */
@@ -284,7 +284,7 @@
 }
 .lb-header-text .card-eyebrow { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.2px; color: #FF6B35; margin-bottom: 2px; }
 .lb-header-text .card-title   { font-size: 1.25rem; font-weight: 700; color: #fff; margin: 0; }
-.lb-header-text .card-subtitle{ font-size: 0.8rem; color: rgba(255,255,255,0.45); margin-top: 3px; }
+.lb-header-text .card-subtitle{ font-size: 0.8rem; color: rgba(255,255,255,0.70); margin-top: 3px; }
 
 /* ── Responsive ─────────────────────────────────────────────────────────────── */
 @media (max-width: 960px) {

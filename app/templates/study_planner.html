@@ -61,6 +61,12 @@
                         </div>
                         <span>Study Planner</span>
                     </a>
+                    <a href="{{ url_for('main.roadmap_page') }}" class="dash-sidebar-link" data-nav-link>
+                        <div class="sidebar-link-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="16"/><circle cx="12" cy="19" r="3"/><path d="M5 12h14"/></svg>
+                        </div>
+                        <span>Study Roadmap</span>
+                    </a>
                     <a href="{{ url_for('main.mock_tests_page') }}" class="dash-sidebar-link" data-nav-link>
                         <div class="sidebar-link-icon">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
@@ -102,55 +108,93 @@
                 </div>
             </section>
 
-            <!-- Study Streak -->
-            <section class="streak-section glass-card-mini">
-                <div class="streak-icon">🔥</div>
-                <div class="streak-info">
-                    <div class="streak-value"><span id="currentStreak">0</span> days</div>
-                    <div class="streak-label">Study Streak</div>
+            <!-- Progress Bar (visible once schedule exists) -->
+            <section class="progress-overview glass-card-mini" id="progressOverview" style="display:none;">
+                <div class="progress-stats">
+                    <div class="stat-item">
+                        <span class="stat-value" id="statDaysRemaining">—</span>
+                        <span class="stat-label">Days Left</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="statTasksDone">0</span>
+                        <span class="stat-label">Tasks Done</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="statTotalTasks">0</span>
+                        <span class="stat-label">Total Tasks</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="statHoursStudied">0</span>
+                        <span class="stat-label">Hrs Studied</span>
+                    </div>
                 </div>
-                <div class="streak-info">
-                    <div class="streak-value"><span id="bestStreak">0</span> days</div>
-                    <div class="streak-label">Best Streak</div>
+                <div class="progress-bar-wrapper">
+                    <div class="progress-bar-track">
+                        <div class="progress-bar-fill" id="progressBarFill" style="width:0%"></div>
+                    </div>
+                    <span class="progress-pct" id="progressPct">0%</span>
                 </div>
             </section>
 
-            <!-- Setup or Weekly View Toggle -->
+            <!-- View Toggle -->
             <div class="view-toggle">
-                <button class="view-btn active" data-view="weekly" id="weeklyViewBtn">
+                <button class="view-btn active" data-view="calendar" id="calendarViewBtn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    Weekly Schedule
+                    Calendar
                 </button>
                 <button class="view-btn" data-view="setup" id="setupViewBtn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.6 5.6l4.2 4.2m4.2 4.2l4.2 4.2M1 12h6m6 0h6M5.6 18.4l4.2-4.2m4.2-4.2l4.2-4.2"/></svg>
-                    Setup & Subjects
+                    Setup &amp; Subjects
                 </button>
             </div>
 
-            <!-- Weekly Schedule View -->
-            <div class="view-content active" id="weeklyView">
+            <!-- ═══ Calendar View ═══ -->
+            <div class="view-content active" id="calendarView">
                 <!-- Suggestions Banner -->
-                <div class="suggestions-banner" id="suggestionsBanner" style="display: none;">
+                <div class="suggestions-banner" id="suggestionsBanner" style="display:none;">
                     <div class="suggestions-icon">💡</div>
                     <div class="suggestions-content" id="suggestionsContent"></div>
                 </div>
 
-                <!-- Weekly Calendar -->
-                <div class="weekly-calendar glass-card" id="weeklyCalendar">
+                <!-- Monthly Calendar -->
+                <div class="monthly-calendar glass-card" id="monthlyCalendar">
                     <div class="calendar-header">
-                        <h2>This Week's Schedule</h2>
+                        <button class="cal-nav-btn" id="prevMonthBtn" title="Previous month">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                        <h2 id="calMonthLabel">—</h2>
+                        <button class="cal-nav-btn" id="nextMonthBtn" title="Next month">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+
                         <button class="btn-generate" id="generateBtn">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-                            Generate Schedule
+                            Generate Full Schedule
                         </button>
                     </div>
-                    <div class="calendar-grid" id="calendarGrid">
+
+                    <!-- Day-of-week labels -->
+                    <div class="cal-dow-row">
+                        <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                    </div>
+
+                    <!-- Calendar grid (filled by JS) -->
+                    <div class="cal-grid" id="calGrid">
                         <div class="empty-state">
                             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                             <p>No schedule generated yet</p>
                             <button class="btn-setup" id="setupPromptBtn">Configure Planner →</button>
                         </div>
                     </div>
+                </div>
+
+                <!-- Day detail panel (shown when clicking a date) -->
+                <div class="day-detail glass-card" id="dayDetail" style="display:none;">
+                    <div class="day-detail-header">
+                        <h3 id="dayDetailTitle">—</h3>
+                        <button class="close-detail" id="closeDayDetail">&times;</button>
+                    </div>
+                    <div class="day-detail-tasks" id="dayDetailTasks"></div>
                 </div>
 
                 <!-- Performance Chart -->
@@ -162,7 +206,7 @@
                 </div>
             </div>
 
-            <!-- Setup View -->
+            <!-- ═══ Setup View ═══ -->
             <div class="view-content" id="setupView">
                 <!-- Configuration Form -->
                 <div class="setup-card glass-card">

@@ -63,6 +63,14 @@ from .db import (
     save_reminder_settings,
     get_daily_study_summary,
     mark_reminder_sent,
+    # ── Roadmap helpers ──
+    create_roadmap,
+    get_roadmap,
+    get_roadmap_topics,
+    update_roadmap_topic_status,
+    get_roadmap_milestones,
+    get_roadmap_progress,
+    delete_roadmap,
 )
 from .email_utils import send_email, send_daily_study_reminder
 
@@ -1592,61 +1600,88 @@ def delete_subject(subject_name):
 
 @main.route("/api/study-planner/generate-schedule", methods=["POST"])
 def generate_schedule():
-    """Generate weekly schedule using the smart algorithm."""
+    """Generate FULL calendar schedule from today → target placement date."""
     email = session.get("user_email")
     if not email:
         return jsonify({"error": "Unauthorized"}), 401
-    
+
     from .db import (
         get_study_planner_config,
         get_study_subjects,
-        create_weekly_schedule
+        create_full_schedule,
     )
     from .scheduler_service import StudyScheduler
     from datetime import datetime, timedelta
-    
-    # Get user config and subjects
+
     config = get_study_planner_config(current_app.config["DATABASE"], email)
     subjects = get_study_subjects(current_app.config["DATABASE"], email)
-    
+
     if not config:
         return jsonify({"error": "Please configure your study planner first"}), 400
-    
     if not subjects:
         return jsonify({"error": "Please add subjects before generating schedule"}), 400
-    
-    # Get week start date from request or use current week
-    data = request.get_json(force=True, silent=True) or {}
-    week_start_str = data.get("week_start_date")
-    
-    if week_start_str:
-        week_start = datetime.fromisoformat(week_start_str).date()
-    else:
-        # Get Monday of current week
-        today = datetime.now().date()
-        week_start = today - timedelta(days=today.weekday())
-    
-    week_end = week_start + timedelta(days=6)
-    
-    # Generate schedule using algorithm
+
+    target_date_str = config.get("target_placement_date")
+    if not target_date_str:
+        return jsonify({"error": "Please set a target placement date in config"}), 400
+
+    today = datetime.now().date()
+    target_date = datetime.fromisoformat(target_date_str).date()
+
+    if target_date <= today:
+        return jsonify({"error": "Target date must be in the future"}), 400
+
     scheduler = StudyScheduler(config, subjects)
-    tasks = scheduler.generate_weekly_schedule(week_start)
-    
-    # Save to database
-    schedule_id = create_weekly_schedule(
+    tasks = scheduler.generate_full_schedule(today, target_date)
+    stats = scheduler.get_schedule_stats(today, target_date)
+
+    schedule_id = create_full_schedule(
         current_app.config["DATABASE"],
         email,
-        week_start.isoformat(),
-        week_end.isoformat(),
-        tasks
+        today.isoformat(),
+        target_date.isoformat(),
+        tasks,
     )
-    
+
     return jsonify({
         "status": "ok",
         "schedule_id": schedule_id,
-        "week_start": week_start.isoformat(),
-        "week_end": week_end.isoformat(),
-        "tasks_count": len(tasks)
+        "start_date": today.isoformat(),
+        "end_date": target_date.isoformat(),
+        "tasks_count": len(tasks),
+        "stats": stats,
+    })
+
+
+@main.route("/api/study-planner/calendar", methods=["GET"])
+def get_calendar_api():
+    """
+    Return tasks for a calendar month.
+    Query params: year=YYYY&month=MM  (defaults to current month)
+    """
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from datetime import datetime
+    from .db import get_calendar_tasks, get_schedule_progress, get_full_schedule_date_range
+
+    now = datetime.now()
+    year = request.args.get("year", now.year, type=int)
+    month = request.args.get("month", now.month, type=int)
+
+    tasks = get_calendar_tasks(
+        current_app.config["DATABASE"], email, year, month
+    )
+    progress = get_schedule_progress(current_app.config["DATABASE"], email)
+    date_range = get_full_schedule_date_range(current_app.config["DATABASE"], email)
+
+    return jsonify({
+        "year": year,
+        "month": month,
+        "tasks": tasks,
+        "progress": progress,
+        "date_range": date_range,
     })
 
 
@@ -1664,7 +1699,14 @@ def get_weekly_schedule_api():
     if not schedule:
         return jsonify({"schedule": None, "tasks": []})
     
-    return jsonify(schedule)
+    # Separate tasks from schedule metadata for frontend
+    tasks = schedule.pop("tasks", [])
+    return jsonify({
+        "schedule": schedule,
+        "tasks": tasks,
+        "week_start_date": schedule.get("week_start_date"),
+        "week_end_date": schedule.get("week_end_date")
+    })
 
 
 @main.route("/api/study-planner/task/<int:task_id>/complete", methods=["POST"])
@@ -1798,4 +1840,164 @@ def get_upcoming_tests_api():
     tests = get_upcoming_mock_tests(current_app.config["DATABASE"], email)
     
     return jsonify({"tests": tests})
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ROADMAP MODULE
+# ═════════════════════════════════════════════════════════════════════════════
+
+@main.route("/roadmap")
+def roadmap_page():
+    """Render the roadmap SPA shell."""
+    if not session.get("user_email"):
+        return redirect(url_for("main.login_page"))
+    return render_template("roadmap.html")
+
+
+@main.route("/api/roadmap/generate", methods=["POST"])
+def generate_roadmap_api():
+    """Generate a new personalised roadmap."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True)
+    branch = data.get("branch", "CSE")
+    company_type = data.get("company_type", "service")
+    preparation_level = data.get("preparation_level", "advanced")
+    target_company = data.get("target_company") or None
+
+    from .roadmap_service import RoadmapGenerator
+
+    if branch not in RoadmapGenerator.SUPPORTED_BRANCHES:
+        return jsonify({"error": f"Unsupported branch: {branch}"}), 400
+    if company_type not in RoadmapGenerator.SUPPORTED_COMPANY_TYPES:
+        return jsonify({"error": f"Unsupported company type: {company_type}"}), 400
+    if preparation_level not in RoadmapGenerator.SUPPORTED_LEVELS:
+        return jsonify({"error": f"Unsupported level: {preparation_level}"}), 400
+
+    gen = RoadmapGenerator(branch, company_type, preparation_level, target_company)
+    roadmap_data = gen.generate()
+
+    db = current_app.config["DATABASE"]
+    roadmap_id = create_roadmap(db, email, roadmap_data)
+
+    return jsonify({
+        "ok": True,
+        "roadmap_id": roadmap_id,
+        "summary": roadmap_data["summary"],
+        "total_topics": len(roadmap_data["topics"]),
+        "total_days": roadmap_data["total_days"],
+    })
+
+
+@main.route("/api/roadmap/current", methods=["GET"])
+def get_current_roadmap_api():
+    """Return the user's latest roadmap with topics & milestones."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    db = current_app.config["DATABASE"]
+    roadmap = get_roadmap(db, email)
+    if not roadmap:
+        return jsonify({"ok": True, "roadmap": None})
+
+    topics = get_roadmap_topics(db, roadmap["id"])
+    milestones = get_roadmap_milestones(db, roadmap["id"])
+
+    return jsonify({
+        "ok": True,
+        "roadmap": {
+            **roadmap,
+            "topics": topics,
+            "milestones": milestones,
+        },
+    })
+
+
+@main.route("/api/roadmap/topic/<int:topic_id>/status", methods=["PUT"])
+def update_topic_status_api(topic_id):
+    """Toggle a topic's status."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(force=True)
+    status = data.get("status", "not_started")
+    if status not in ("not_started", "in_progress", "completed"):
+        return jsonify({"error": "Invalid status"}), 400
+
+    db = current_app.config["DATABASE"]
+    update_roadmap_topic_status(db, topic_id, status, email)
+
+    return jsonify({"ok": True, "topic_id": topic_id, "status": status})
+
+
+@main.route("/api/roadmap/progress", methods=["GET"])
+def roadmap_progress_api():
+    """Aggregate progress stats for the user's roadmap."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    db = current_app.config["DATABASE"]
+    progress = get_roadmap_progress(db, email)
+    if not progress:
+        return jsonify({"ok": True, "progress": None})
+
+    return jsonify({"ok": True, "progress": progress})
+
+
+@main.route("/api/roadmap/readiness-score", methods=["GET"])
+def readiness_score_api():
+    """Calculate placement readiness score."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    db = current_app.config["DATABASE"]
+    progress = get_roadmap_progress(db, email)
+    if not progress:
+        return jsonify({"ok": True, "readiness": None})
+
+    from .roadmap_service import RoadmapGenerator
+    from datetime import date
+
+    roadmap = get_roadmap(db, email)
+    created = date.fromisoformat(roadmap["created_at"][:10])
+    elapsed = (date.today() - created).days
+
+    readiness = RoadmapGenerator.calculate_readiness(
+        total_topics=progress["total_topics"],
+        completed_topics=progress["completed_topics"],
+        total_days=progress["total_days"],
+        elapsed_days=elapsed,
+    )
+
+    return jsonify({"ok": True, "readiness": readiness})
+
+
+@main.route("/api/roadmap/delete", methods=["DELETE"])
+def delete_roadmap_api():
+    """Delete the user's roadmap."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    db = current_app.config["DATABASE"]
+    delete_roadmap(db, email)
+    return jsonify({"ok": True})
+
+
+@main.route("/api/roadmap/meta", methods=["GET"])
+def roadmap_meta_api():
+    """Return supported branches, company types and levels for the setup form."""
+    from .roadmap_service import RoadmapGenerator, COMPANY_EXTRAS
+    return jsonify({
+        "branches": RoadmapGenerator.SUPPORTED_BRANCHES,
+        "company_types": RoadmapGenerator.SUPPORTED_COMPANY_TYPES,
+        "levels": RoadmapGenerator.SUPPORTED_LEVELS,
+        "target_companies": sorted(COMPANY_EXTRAS.keys()),
+    })
 
