@@ -110,7 +110,7 @@ This application is deployed on **Render** for production use.
 
 ### Live Application
 
-🔗 **[Access LearnMate Live](https://your-app-name.onrender.com)** _(Replace with your actual Render URL)_
+🔗 **[Access LearnMate Live](https://personalized-learning-companion-for-0bfa.onrender.com)**
 
 ### Deployment Platform: Render
 
