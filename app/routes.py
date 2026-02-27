@@ -1491,3 +1491,311 @@ def send_reminder_now():
         return jsonify({"status": "sent"})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SMART STUDY SCHEDULER ROUTES
+# ═════════════════════════════════════════════════════════════════════════════
+
+@main.route("/study-planner")
+def study_planner_page():
+    """Study planner main page."""
+    email = session.get("user_email")
+    if not email:
+        return redirect(url_for("main.login"))
+    return render_template("study_planner.html")
+
+
+@main.route("/api/study-planner/config", methods=["GET"])
+def get_study_config():
+    """Get user's study planner configuration."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import get_study_planner_config, get_study_subjects
+    
+    config = get_study_planner_config(current_app.config["DATABASE"], email)
+    subjects = get_study_subjects(current_app.config["DATABASE"], email)
+    
+    return jsonify({
+        "config": config,
+        "subjects": subjects
+    })
+
+
+@main.route("/api/study-planner/config", methods=["POST"])
+def save_study_config():
+    """Save study planner configuration."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import save_study_planner_config
+    
+    data = request.get_json(force=True, silent=True) or {}
+    
+    config = {
+        "daily_hours": float(data.get("daily_hours", 3.0)),
+        "college_start": data.get("college_start"),
+        "college_end": data.get("college_end"),
+        "work_start": data.get("work_start"),
+        "work_end": data.get("work_end"),
+        "target_placement_date": data.get("target_placement_date"),
+        "preparation_level": data.get("preparation_level", "beginner")
+    }
+    
+    save_study_planner_config(current_app.config["DATABASE"], email, config)
+    
+    return jsonify({"status": "ok", "config": config})
+
+
+@main.route("/api/study-planner/subjects", methods=["POST"])
+def add_study_subject():
+    """Add or update a subject."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import save_study_subject
+    
+    data = request.get_json(force=True, silent=True) or {}
+    
+    subject_name = data.get("subject_name", "").strip()
+    priority = data.get("priority", "medium")
+    
+    # Map priority to weight
+    weight_map = {"weak": 3, "medium": 2, "strong": 1}
+    weight = weight_map.get(priority, 2)
+    
+    if not subject_name:
+        return jsonify({"error": "Subject name required"}), 400
+    
+    save_study_subject(current_app.config["DATABASE"], email, subject_name, priority, weight)
+    
+    return jsonify({"status": "ok", "subject": subject_name})
+
+
+@main.route("/api/study-planner/subjects/<subject_name>", methods=["DELETE"])
+def delete_subject(subject_name):
+    """Delete a subject."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import delete_study_subject
+    
+    delete_study_subject(current_app.config["DATABASE"], email, subject_name)
+    
+    return jsonify({"status": "ok"})
+
+
+@main.route("/api/study-planner/generate-schedule", methods=["POST"])
+def generate_schedule():
+    """Generate weekly schedule using the smart algorithm."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import (
+        get_study_planner_config,
+        get_study_subjects,
+        create_weekly_schedule
+    )
+    from .scheduler_service import StudyScheduler
+    from datetime import datetime, timedelta
+    
+    # Get user config and subjects
+    config = get_study_planner_config(current_app.config["DATABASE"], email)
+    subjects = get_study_subjects(current_app.config["DATABASE"], email)
+    
+    if not config:
+        return jsonify({"error": "Please configure your study planner first"}), 400
+    
+    if not subjects:
+        return jsonify({"error": "Please add subjects before generating schedule"}), 400
+    
+    # Get week start date from request or use current week
+    data = request.get_json(force=True, silent=True) or {}
+    week_start_str = data.get("week_start_date")
+    
+    if week_start_str:
+        week_start = datetime.fromisoformat(week_start_str).date()
+    else:
+        # Get Monday of current week
+        today = datetime.now().date()
+        week_start = today - timedelta(days=today.weekday())
+    
+    week_end = week_start + timedelta(days=6)
+    
+    # Generate schedule using algorithm
+    scheduler = StudyScheduler(config, subjects)
+    tasks = scheduler.generate_weekly_schedule(week_start)
+    
+    # Save to database
+    schedule_id = create_weekly_schedule(
+        current_app.config["DATABASE"],
+        email,
+        week_start.isoformat(),
+        week_end.isoformat(),
+        tasks
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "schedule_id": schedule_id,
+        "week_start": week_start.isoformat(),
+        "week_end": week_end.isoformat(),
+        "tasks_count": len(tasks)
+    })
+
+
+@main.route("/api/study-planner/weekly-schedule", methods=["GET"])
+def get_weekly_schedule_api():
+    """Get weekly schedule."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import get_current_week_schedule
+    
+    schedule = get_current_week_schedule(current_app.config["DATABASE"], email)
+    
+    if not schedule:
+        return jsonify({"schedule": None, "tasks": []})
+    
+    return jsonify(schedule)
+
+
+@main.route("/api/study-planner/task/<int:task_id>/complete", methods=["POST"])
+def mark_task_complete_api(task_id):
+    """Mark a task as complete."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import mark_task_complete
+    
+    data = request.get_json(force=True, silent=True) or {}
+    notes = data.get("notes")
+    
+    mark_task_complete(current_app.config["DATABASE"], task_id, notes)
+    
+    return jsonify({"status": "ok"})
+
+
+@main.route("/api/study-planner/task/<int:task_id>/incomplete", methods=["POST"])
+def mark_task_incomplete_api(task_id):
+    """Mark a task as incomplete."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import mark_task_incomplete
+    
+    mark_task_incomplete(current_app.config["DATABASE"], task_id)
+    
+    return jsonify({"status": "ok"})
+
+
+@main.route("/api/study-planner/streak", methods=["GET"])
+def get_study_streak_api():
+    """Get study streak information."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import get_study_streak
+    
+    streak = get_study_streak(current_app.config["DATABASE"], email)
+    
+    return jsonify(streak)
+
+
+@main.route("/api/study-planner/performance", methods=["GET"])
+def get_performance_api():
+    """Get performance summary for adaptive insights."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import get_performance_summary, get_study_subjects, get_study_streak
+    from .scheduler_service import calculate_readiness_score
+    
+    performance = get_performance_summary(current_app.config["DATABASE"], email)
+    subjects = get_study_subjects(current_app.config["DATABASE"], email)
+    streak = get_study_streak(current_app.config["DATABASE"], email)
+    
+    # Calculate readiness score
+    readiness = calculate_readiness_score(
+        subjects,
+        performance["recent_logs"],
+        streak
+    )
+    
+    return jsonify({
+        "performance": performance,
+        "readiness": readiness
+    })
+
+
+@main.route("/api/study-planner/performance/log", methods=["POST"])
+def log_performance_api():
+    """Log performance data."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import log_study_performance
+    
+    data = request.get_json(force=True, silent=True) or {}
+    
+    subject = data.get("subject")
+    if not subject:
+        return jsonify({"error": "Subject required"}), 400
+    
+    log_study_performance(current_app.config["DATABASE"], email, subject, data)
+    
+    return jsonify({"status": "ok"})
+
+
+@main.route("/api/study-planner/suggestions", methods=["GET"])
+def get_study_suggestions_api():
+    """Get AI-powered study suggestions based on performance."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import (
+        get_performance_summary,
+        get_study_planner_config,
+        get_study_subjects
+    )
+    from .scheduler_service import StudyScheduler
+    
+    performance = get_performance_summary(current_app.config["DATABASE"], email)
+    config = get_study_planner_config(current_app.config["DATABASE"], email)
+    subjects = get_study_subjects(current_app.config["DATABASE"], email)
+    
+    if not config or not subjects:
+        return jsonify({"suggestions": []})
+    
+    scheduler = StudyScheduler(config, subjects)
+    suggestions = scheduler.suggest_focus_areas(performance["recent_logs"])
+    
+    return jsonify({"suggestions": suggestions})
+
+
+@main.route("/api/study-planner/upcoming-tests", methods=["GET"])
+def get_upcoming_tests_api():
+    """Get upcoming scheduled mock tests."""
+    email = session.get("user_email")
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    from .db import get_upcoming_mock_tests
+    
+    tests = get_upcoming_mock_tests(current_app.config["DATABASE"], email)
+    
+    return jsonify({"tests": tests})
+

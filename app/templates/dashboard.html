@@ -11,40 +11,79 @@
 <body class="page-fade page-fade-ready dashboard-page">
     <main class="auth-page">
         <spline-viewer url="https://prod.spline.design/fXcrKO8RVlhTuX6A/scene.splinecode"></spline-viewer>
-        <div class="auth-brand">LearnMate</div>
 
-        <!-- ═══ NAVBAR ═══ -->
-        <nav class="dash-navbar">
-            <div class="dash-navbar-inner">
-                <span class="dash-nav-brand">LearnMate</span>
-                <div class="dash-nav-links">
-                    <a href="#skill-checklist" class="dash-nav-link active" data-nav-link>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                        Skill Checklist
+        <!-- Mobile Menu Toggle -->
+        <button class="mobile-menu-toggle" id="mobileMenuToggle">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+        </button>
+
+        <!-- Sidebar Overlay -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <!-- ═══ LEFT SIDEBAR ═══ -->
+        <aside class="dash-sidebar" id="dashSidebar">
+            <div class="dash-sidebar-header">
+                <div class="dash-sidebar-brand">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff7a00" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    <span class="dash-brand-text">LearnMate</span>
+                </div>
+            </div>
+
+            <nav class="dash-sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-label">Features</div>
+                    <a href="#skill-checklist" class="dash-sidebar-link active" data-nav-link>
+                        <div class="sidebar-link-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        </div>
+                        <span>Skill Checklist</span>
                     </a>
-                    <a href="{{ url_for('main.resume_page') }}" class="dash-nav-link" data-nav-link>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                        Analyze Resume
+                    <a href="{{ url_for('main.resume_page') }}" class="dash-sidebar-link" data-nav-link>
+                        <div class="sidebar-link-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        </div>
+                        <span>Analyze Resume</span>
                     </a>
-                    <a href="{{ url_for('main.progress_page') }}" class="dash-nav-link" data-nav-link>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14l2 2 4-4"/></svg>
-                        Progress Tracker
+                    <a href="{{ url_for('main.progress_page') }}" class="dash-sidebar-link" data-nav-link>
+                        <div class="sidebar-link-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14l2 2 4-4"/></svg>
+                        </div>
+                        <span>Progress Tracker</span>
                     </a>
-                    <a href="{{ url_for('main.mock_tests_page') }}" class="dash-nav-link" data-nav-link>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><polyline points="10,9 9,9 8,9"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                        Mock Test Logbook
+                    <a href="{{ url_for('main.study_planner_page') }}" class="dash-sidebar-link" data-nav-link>
+                        <div class="sidebar-link-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><rect x="7" y="13" width="3" height="4" rx="1"/><rect x="14" y="13" width="3" height="4" rx="1"/></svg>
+                        </div>
+                        <span>Study Planner</span>
                     </a>
-                    <a href="{{ url_for('main.leaderboard_page') }}" class="dash-nav-link" data-nav-link>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
-                        Leaderboard
+                    <a href="{{ url_for('main.mock_tests_page') }}" class="dash-sidebar-link" data-nav-link>
+                        <div class="sidebar-link-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><polyline points="10,9 9,9 8,9"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        </div>
+                        <span>Mock Test Logbook</span>
+                    </a>
+                    <a href="{{ url_for('main.leaderboard_page') }}" class="dash-sidebar-link" data-nav-link>
+                        <div class="sidebar-link-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                        </div>
+                        <span>Leaderboard</span>
                     </a>
                 </div>
-                <a href="{{ url_for('main.logout') }}" class="dash-nav-logout" title="Logout">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                    Logout
+            </nav>
+
+            <div class="dash-sidebar-footer">
+                <a href="{{ url_for('main.logout') }}" class="dash-sidebar-logout">
+                    <div class="sidebar-link-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    </div>
+                    <span>Logout</span>
                 </a>
             </div>
-        </nav>
+        </aside>
 
         <div class="auth-shell">
             <section class="auth-left dashboard-intro" id="skill-checklist">
@@ -172,6 +211,36 @@
     <script id="resume-analysis-data" type="application/json">{{ analysis_data | tojson if analysis_data else 'null' }}</script>
     <script>
         const RESUME_ANALYSIS = JSON.parse(document.getElementById('resume-analysis-data').textContent);
+        
+        // Mobile sidebar toggle
+        (function() {
+            const mobileToggle = document.getElementById('mobileMenuToggle');
+            const sidebar = document.getElementById('dashSidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            
+            if (mobileToggle && sidebar && overlay) {
+                mobileToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('open');
+                    overlay.classList.toggle('active');
+                });
+                
+                overlay.addEventListener('click', function() {
+                    sidebar.classList.remove('open');
+                    overlay.classList.remove('active');
+                });
+                
+                // Close sidebar when clicking a link on mobile
+                const sidebarLinks = sidebar.querySelectorAll('.dash-sidebar-link, .dash-sidebar-logout');
+                sidebarLinks.forEach(link => {
+                    link.addEventListener('click', function() {
+                        if (window.innerWidth <= 640) {
+                            sidebar.classList.remove('open');
+                            overlay.classList.remove('active');
+                        }
+                    });
+                });
+            }
+        })();
     </script>
     <script src="{{ url_for('static', filename='js/skill-checklist.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard-chatbot.js') }}"></script>

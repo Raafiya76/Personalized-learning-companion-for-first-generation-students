@@ -184,6 +184,145 @@ def init_db(app):
             """
         )
 
+        # ── Smart Study Scheduler Tables ──────────────────────────────────────
+        
+        # User study planner configuration
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS study_planner_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                daily_hours REAL NOT NULL DEFAULT 3.0,
+                college_start TEXT,
+                college_end TEXT,
+                work_start TEXT,
+                work_end TEXT,
+                target_placement_date TEXT,
+                preparation_level TEXT NOT NULL DEFAULT 'beginner',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+
+        # Subject priorities and performance
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS study_subjects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                subject_name TEXT NOT NULL,
+                priority TEXT NOT NULL DEFAULT 'medium',
+                weight INTEGER NOT NULL DEFAULT 2,
+                total_hours_allocated REAL NOT NULL DEFAULT 0.0,
+                hours_completed REAL NOT NULL DEFAULT 0.0,
+                performance_score REAL NOT NULL DEFAULT 0.0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(email, subject_name)
+            )
+            """
+        )
+
+        # Weekly schedule generation
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS weekly_schedules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                week_start_date TEXT NOT NULL,
+                week_end_date TEXT NOT NULL,
+                total_planned_hours REAL NOT NULL DEFAULT 0.0,
+                total_completed_hours REAL NOT NULL DEFAULT 0.0,
+                completion_percentage REAL NOT NULL DEFAULT 0.0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(email, week_start_date)
+            )
+            """
+        )
+
+        # Individual study tasks
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS study_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                schedule_id INTEGER NOT NULL,
+                task_date TEXT NOT NULL,
+                task_time TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                topic TEXT NOT NULL,
+                task_type TEXT NOT NULL DEFAULT 'study',
+                duration_minutes INTEGER NOT NULL DEFAULT 60,
+                completed INTEGER NOT NULL DEFAULT 0,
+                completed_at TEXT,
+                notes TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (schedule_id) REFERENCES weekly_schedules(id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        # Performance tracking for adaptive scheduling
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS study_performance_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                log_date TEXT NOT NULL DEFAULT (date('now')),
+                mock_score REAL,
+                practice_score REAL,
+                tasks_completed INTEGER NOT NULL DEFAULT 0,
+                tasks_total INTEGER NOT NULL DEFAULT 0,
+                study_hours REAL NOT NULL DEFAULT 0.0,
+                effectiveness_rating INTEGER,
+                notes TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+
+        # Study streak tracking (separate from login streaks)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS study_streaks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                current_streak INTEGER NOT NULL DEFAULT 0,
+                best_streak INTEGER NOT NULL DEFAULT 0,
+                last_study_date TEXT,
+                total_study_days INTEGER NOT NULL DEFAULT 0,
+                streak_frozen INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+
+        # Mock test scheduler integration
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scheduled_mock_tests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                test_name TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                scheduled_date TEXT NOT NULL,
+                scheduled_time TEXT NOT NULL,
+                duration_minutes INTEGER NOT NULL DEFAULT 60,
+                completed INTEGER NOT NULL DEFAULT 0,
+                score REAL,
+                completed_at TEXT,
+                auto_generated INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+
         conn.commit()
 
 
@@ -1289,3 +1428,413 @@ def get_full_user_stats(db_path, email):
         "resume_feedback": resume_summary,
         "habit_streaks": habit_streaks,
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SMART STUDY SCHEDULER FUNCTIONS
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+def get_study_planner_config(db_path, email):
+    """Get user's study planner configuration."""
+    with get_connection(db_path) as conn:
+        cur = conn.execute(
+            "SELECT * FROM study_planner_config WHERE email = ?", (email,)
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def save_study_planner_config(db_path, email, config):
+    """Save or update study planner configuration."""
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO study_planner_config 
+            (email, daily_hours, college_start, college_end, work_start, work_end, 
+             target_placement_date, preparation_level, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(email) DO UPDATE SET
+                daily_hours = excluded.daily_hours,
+                college_start = excluded.college_start,
+                college_end = excluded.college_end,
+                work_start = excluded.work_start,
+                work_end = excluded.work_end,
+                target_placement_date = excluded.target_placement_date,
+                preparation_level = excluded.preparation_level,
+                updated_at = datetime('now')
+            """,
+            (
+                email,
+                config.get("daily_hours", 3.0),
+                config.get("college_start"),
+                config.get("college_end"),
+                config.get("work_start"),
+                config.get("work_end"),
+                config.get("target_placement_date"),
+                config.get("preparation_level", "beginner"),
+            ),
+        )
+        conn.commit()
+
+
+def get_study_subjects(db_path, email):
+    """Get all subjects for a user."""
+    with get_connection(db_path) as conn:
+        cur = conn.execute(
+            """
+            SELECT * FROM study_subjects 
+            WHERE email = ? 
+            ORDER BY weight DESC, subject_name ASC
+            """,
+            (email,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def save_study_subject(db_path, email, subject_name, priority, weight):
+    """Save or update a subject."""
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO study_subjects (email, subject_name, priority, weight, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(email, subject_name) DO UPDATE SET
+                priority = excluded.priority,
+                weight = excluded.weight,
+                updated_at = datetime('now')
+            """,
+            (email, subject_name, priority, weight),
+        )
+        conn.commit()
+
+
+def delete_study_subject(db_path, email, subject_name):
+    """Delete a subject."""
+    with get_connection(db_path) as conn:
+        conn.execute(
+            "DELETE FROM study_subjects WHERE email = ? AND subject_name = ?",
+            (email, subject_name),
+        )
+        conn.commit()
+
+
+def get_weekly_schedule(db_path, email, week_start_date):
+    """Get weekly schedule for a specific week."""
+    with get_connection(db_path) as conn:
+        cur = conn.execute(
+            "SELECT * FROM weekly_schedules WHERE email = ? AND week_start_date = ?",
+            (email, week_start_date),
+        )
+        schedule = cur.fetchone()
+        if not schedule:
+            return None
+
+        schedule_dict = dict(schedule)
+        
+        # Get tasks for this schedule
+        cur = conn.execute(
+            """
+            SELECT * FROM study_tasks 
+            WHERE schedule_id = ? 
+            ORDER BY task_date ASC, task_time ASC
+            """,
+            (schedule_dict["id"],),
+        )
+        schedule_dict["tasks"] = [dict(r) for r in cur.fetchall()]
+        
+        return schedule_dict
+
+
+def get_current_week_schedule(db_path, email):
+    """Get schedule for current week."""
+    from datetime import datetime, timedelta
+    
+    today = datetime.now().date()
+    # Get Monday of current week
+    week_start = today - timedelta(days=today.weekday())
+    
+    return get_weekly_schedule(db_path, email, week_start.isoformat())
+
+
+def create_weekly_schedule(db_path, email, week_start_date, week_end_date, tasks):
+    """Create a new weekly schedule with tasks."""
+    with get_connection(db_path) as conn:
+        # Calculate total planned hours
+        total_planned_hours = sum(task["duration_minutes"] for task in tasks) / 60.0
+        
+        # Create schedule
+        cur = conn.execute(
+            """
+            INSERT INTO weekly_schedules 
+            (email, week_start_date, week_end_date, total_planned_hours, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(email, week_start_date) DO UPDATE SET
+                week_end_date = excluded.week_end_date,
+                total_planned_hours = excluded.total_planned_hours,
+                updated_at = datetime('now')
+            RETURNING id
+            """,
+            (email, week_start_date, week_end_date, total_planned_hours),
+        )
+        schedule_id = cur.fetchone()[0]
+        
+        # Delete old tasks if regenerating
+        conn.execute("DELETE FROM study_tasks WHERE schedule_id = ?", (schedule_id,))
+        
+        # Insert tasks
+        for task in tasks:
+            conn.execute(
+                """
+                INSERT INTO study_tasks 
+                (email, schedule_id, task_date, task_time, subject, topic, 
+                 task_type, duration_minutes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    email,
+                    schedule_id,
+                    task["date"],
+                    task["time"],
+                    task["subject"],
+                    task["topic"],
+                    task.get("type", "study"),
+                    task["duration_minutes"],
+                ),
+            )
+        
+        conn.commit()
+        return schedule_id
+
+
+def mark_task_complete(db_path, task_id, notes=None):
+    """Mark a study task as complete."""
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE study_tasks 
+            SET completed = 1, 
+                completed_at = datetime('now'),
+                notes = ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (notes, task_id),
+        )
+        conn.commit()
+        
+        # Update streak
+        cur = conn.execute("SELECT email FROM study_tasks WHERE id = ?", (task_id,))
+        row = cur.fetchone()
+        if row:
+            update_study_streak(db_path, row["email"])
+
+
+def mark_task_incomplete(db_path, task_id):
+    """Mark a study task as incomplete."""
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE study_tasks 
+            SET completed = 0, 
+                completed_at = NULL,
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (task_id,),
+        )
+        conn.commit()
+
+
+def get_study_streak(db_path, email):
+    """Get study streak information."""
+    with get_connection(db_path) as conn:
+        cur = conn.execute(
+            "SELECT * FROM study_streaks WHERE email = ?", (email,)
+        )
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+        
+        # Initialize streak record
+        conn.execute(
+            """
+            INSERT INTO study_streaks (email, current_streak, best_streak)
+            VALUES (?, 0, 0)
+            """,
+            (email,),
+        )
+        conn.commit()
+        return {"current_streak": 0, "best_streak": 0, "total_study_days": 0}
+
+
+def update_study_streak(db_path, email):
+    """Update study streak based on completed tasks."""
+    from datetime import datetime, timedelta
+    
+    with get_connection(db_path) as conn:
+        # Get last 30 days of task completion
+        cur = conn.execute(
+            """
+            SELECT DISTINCT task_date, COUNT(*) as completed_count
+            FROM study_tasks
+            WHERE email = ? AND completed = 1
+            GROUP BY task_date
+            ORDER BY task_date DESC
+            LIMIT 30
+            """,
+            (email,),
+        )
+        completed_dates = [row["task_date"] for row in cur.fetchall()]
+        
+        if not completed_dates:
+            conn.execute(
+                """
+                UPDATE study_streaks 
+                SET current_streak = 0, updated_at = datetime('now')
+                WHERE email = ?
+                """,
+                (email,),
+            )
+            conn.commit()
+            return
+        
+        # Calculate current streak
+        today = datetime.now().date()
+        current_streak = 0
+        check_date = today
+        
+        for i in range(30):
+            date_str = check_date.isoformat()
+            if date_str in completed_dates:
+                current_streak += 1
+                check_date -= timedelta(days=1)
+            else:
+                break
+        
+        # Update streak
+        cur = conn.execute(
+            "SELECT best_streak FROM study_streaks WHERE email = ?", (email,)
+        )
+        row = cur.fetchone()
+        best_streak = row["best_streak"] if row else 0
+        best_streak = max(best_streak, current_streak)
+        
+        conn.execute(
+            """
+            UPDATE study_streaks 
+            SET current_streak = ?,
+                best_streak = ?,
+                last_study_date = ?,
+                total_study_days = ?,
+                updated_at = datetime('now')
+            WHERE email = ?
+            """,
+            (current_streak, best_streak, today.isoformat(), len(completed_dates), email),
+        )
+        conn.commit()
+
+
+def log_study_performance(db_path, email, subject, data):
+    """Log performance data for adaptive scheduling."""
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO study_performance_logs
+            (email, subject, log_date, mock_score, practice_score, 
+             tasks_completed, tasks_total, study_hours, effectiveness_rating, notes)
+            VALUES (?, ?, date('now'), ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                email,
+                subject,
+                data.get("mock_score"),
+                data.get("practice_score"),
+                data.get("tasks_completed", 0),
+                data.get("tasks_total", 0),
+                data.get("study_hours", 0.0),
+                data.get("effectiveness_rating"),
+                data.get("notes"),
+            ),
+        )
+        conn.commit()
+
+
+def get_performance_summary(db_path, email):
+    """Get performance summary for adaptive scheduling."""
+    with get_connection(db_path) as conn:
+        # Subject-wise performance
+        cur = conn.execute(
+            """
+            SELECT 
+                subject,
+                AVG(mock_score) as avg_mock_score,
+                AVG(practice_score) as avg_practice_score,
+                SUM(tasks_completed) as total_completed,
+                SUM(tasks_total) as total_tasks,
+                SUM(study_hours) as total_hours,
+                AVG(effectiveness_rating) as avg_effectiveness
+            FROM study_performance_logs
+            WHERE email = ?
+            GROUP BY subject
+            """,
+            (email,),
+        )
+        subject_performance = [dict(r) for r in cur.fetchall()]
+        
+        # Recent performance (last 7 days)
+        cur = conn.execute(
+            """
+            SELECT *
+            FROM study_performance_logs
+            WHERE email = ? 
+            AND log_date >= date('now', '-7 days')
+            ORDER BY log_date DESC
+            """,
+            (email,),
+        )
+        recent_logs = [dict(r) for r in cur.fetchall()]
+        
+        return {
+            "subject_performance": subject_performance,
+            "recent_logs": recent_logs,
+        }
+
+
+def schedule_mock_test(db_path, email, test_data):
+    """Schedule a mock test."""
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO scheduled_mock_tests
+            (email, test_name, subject, scheduled_date, scheduled_time, 
+             duration_minutes, auto_generated)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                email,
+                test_data["test_name"],
+                test_data["subject"],
+                test_data["date"],
+                test_data["time"],
+                test_data.get("duration_minutes", 60),
+                test_data.get("auto_generated", 1),
+            ),
+        )
+        conn.commit()
+
+
+def get_upcoming_mock_tests(db_path, email):
+    """Get upcoming scheduled mock tests."""
+    with get_connection(db_path) as conn:
+        cur = conn.execute(
+            """
+            SELECT * FROM scheduled_mock_tests
+            WHERE email = ? AND completed = 0
+            AND scheduled_date >= date('now')
+            ORDER BY scheduled_date ASC, scheduled_time ASC
+            """,
+            (email,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
